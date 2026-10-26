@@ -11,3 +11,6 @@
 .DS_Store
 .AppleDouble
 .LSOverride
+
+### IntelliJ IDEA ###
+.idea
