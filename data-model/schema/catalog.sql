@@ -1,4 +1,7 @@
 CREATE EXTENSION IF NOT EXISTS postgis;
+CREATE EXTENSION IF NOT EXISTS btree_gist;
+
+CREATE TYPE time_range AS RANGE (subtype = time);
 
 CREATE TYPE offer_status AS ENUM ('ACTIVE', 'EXPIRED', 'SUSPENDED', 'ARCHIVED');
 CREATE TYPE discount_type AS ENUM ('PERCENT', 'FIXED_AMOUNT', 'SPECIAL_PRICE', 'FREE_ITEM', 'OTHER');
@@ -19,6 +22,7 @@ CREATE TABLE places (
     address_line       varchar(300)           NOT NULL,
     address_normalized varchar(300)           NOT NULL,
     location           geography(Point, 4326) NOT NULL,
+    timezone           varchar(64)            NOT NULL,
     category_code      varchar(50)            NOT NULL REFERENCES categories (code),
     organization_id    uuid,
     row_version        int                    NOT NULL DEFAULT 0,
@@ -26,7 +30,8 @@ CREATE TABLE places (
     updated_at         timestamptz            NOT NULL DEFAULT now(),
     CONSTRAINT places_name_not_blank CHECK (btrim(name) <> ''),
     CONSTRAINT places_city_not_blank CHECK (btrim(city) <> ''),
-    CONSTRAINT places_address_not_blank CHECK (btrim(address_line) <> '')
+    CONSTRAINT places_address_not_blank CHECK (btrim(address_line) <> ''),
+    CONSTRAINT places_timezone_format CHECK (timezone ~ '^[A-Za-z]+(/[A-Za-z0-9_+-]+)+$' OR timezone = 'UTC')
 );
 
 CREATE INDEX places_location_gist ON places USING gist (location);
@@ -70,4 +75,21 @@ CREATE INDEX offers_place_idx ON offers (place_id);
 CREATE INDEX offers_active_place_idx ON offers (place_id) WHERE status = 'ACTIVE';
 CREATE INDEX offers_active_valid_until_idx ON offers (valid_until) WHERE status = 'ACTIVE';
 CREATE INDEX offers_active_discount_type_idx ON offers (discount_type) WHERE status = 'ACTIVE';
-CREATE UNIQUE INDEX offers_approved_version_uniq ON offers (approved_version_id);
+CREATE INDEX offers_approved_version_idx ON offers (approved_version_id);
+
+CREATE TABLE offer_schedule (
+    id          uuid     PRIMARY KEY,
+    offer_id    uuid     NOT NULL REFERENCES offers (id) ON DELETE CASCADE,
+    day_of_week smallint NOT NULL,
+    time_from   time     NOT NULL,
+    time_until  time     NOT NULL,
+    CONSTRAINT offer_schedule_day_range CHECK (day_of_week BETWEEN 1 AND 7),
+    CONSTRAINT offer_schedule_time_order CHECK (time_from < time_until),
+    CONSTRAINT offer_schedule_no_overlap EXCLUDE USING gist (
+        offer_id WITH =,
+        day_of_week WITH =,
+        time_range(time_from, time_until, '[)') WITH &&
+    )
+);
+
+CREATE INDEX offer_schedule_offer_idx ON offer_schedule (offer_id);
