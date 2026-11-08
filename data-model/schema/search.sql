@@ -22,7 +22,7 @@ CREATE TABLE search_offers (
     schedule_preview jsonb                  NOT NULL DEFAULT '[]'::jsonb,
     search_vector    tsvector GENERATED ALWAYS AS (
         setweight(to_tsvector('pg_catalog.russian'::regconfig, place_name), 'A')
-        || setweight(to_tsvector('pg_catalog.russian'::regconfig, city || ' ' || address_line), 'B')
+        || setweight(to_tsvector('pg_catalog.russian'::regconfig, address_line), 'B')
     ) STORED NOT NULL,
 
     CONSTRAINT search_offers_place_name_not_blank CHECK (btrim(place_name) <> ''),
@@ -44,8 +44,6 @@ CREATE TABLE search_offers (
 CREATE INDEX search_offers_search_vector_gin ON search_offers USING gin (search_vector);
 CREATE INDEX search_offers_location_gist ON search_offers USING gist (location);
 CREATE INDEX search_offers_place_idx ON search_offers (place_id);
-CREATE INDEX search_offers_city_idx ON search_offers (city);
-CREATE INDEX search_offers_category_idx ON search_offers (category_code);
 
 CREATE TABLE search_document_state (
     offer_id        uuid        PRIMARY KEY,
